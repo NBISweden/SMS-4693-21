@@ -1,0 +1,338 @@
+---
+title: "Exploratory analyses of the pilot data from the Promort study"
+subtitle: "Quality assessment assessment of the RNA-seq data"
+author: "`r paste0('Ashfaq Ali • ',format(Sys.time(), '%d-%b-%Y'))`"
+output:
+  bookdown::html_document2:
+          toc: true
+          toc_float: true
+          toc_depth: 4
+          number_sections: true
+          theme: flatly
+          highlight: tango
+          df_print: paged
+          code_folding: "none"
+          self_contained: false
+          keep_md: false
+          encoding: 'UTF-8'
+          css: "assets/report.css"
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '/Users/cob-aaf/Documents/Projects/Promort_4693/')
+```
+
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6986029/
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(reshape2)
+library(Hmisc)
+library(tximport)
+#library(tximportData)
+library(DESeq2)
+#library(naniar)
+library(limma)
+#library(Glimma)
+#library(edgeR)
+#library(ReportingTools)
+library(BiocParallel)
+library(readxl) # read from and write to excel files
+library(biomaRt)
+#library(beanplot)
+library(ggpubr)
+```
+---
+
+
+
+## Exploratory analyses
+
+
+ **Read counts per sample and genes to explore the quality of libraries**
+ 
+ - A) Raw counts violin plots for number of reads per samples
+ - B) Genes with more than 5 reads per sample
+ - C) Total raw counts per sample
+ - D) PCA 
+
+
+```{r, eval=TRUE, echo=FALSE,}
+
+rna_data <- readRDS("./NBIS Data/RNA_seq_Data/salmon.merged.gene_counts.rds")
+assays(rna_data)$counts <- round(assays(rna_data)$counts) %>% as.matrix()
+#rna_trnscpt_data <- readRDS("./NBIS Data/RNA_seq_Data/salmon.merged.transcript_counts.rds")
+IDs <- read_table("./NBIS Data/RNA_seq_Data/IDs.txt", col_names = TRUE)
+sample_data <- read_table("./NBIS Data/RNA_seq_Data/coldata.txt", col_names = TRUE)
+sample_data <- left_join(sample_data, IDs, by= "ID2")
+
+sample_data <- left_join(sample_data, as.data.frame(colData(rna_data )),by = c("ID1"="names") )
+
+rownames(sample_data) <- sample_data$ID1 
+colData(rna_data) <- DataFrame(sample_data)
+#melt(DT, id=c("i_1", "i_2"), measure=3)
+#wide_data<-cbind(colData(se), t(assays(se)$counts+1))
+long_data <- melt((assays(rna_data)$counts)) 
+long_data$countsums5 <- as.numeric(long_data$value>5)
+long_data$countsums10 <- as.numeric(long_data$value>10)
+
+# long_trnscrpt_data <- melt((assays(rna_trnscpt_data)$counts)) 
+# long_trnscrpt_data$countsums5 <- as.numeric(long_trnscrpt_data$value>5)
+# long_trnscrpt_data$countsums10 <- as.numeric(long_trnscrpt_data$value>10)
+```
+
+## Raw data 
+
+Violin plot indicates similar expression across samples but many genes need to be filtered due to low count values.
+
+```{r , eval = FALSE, echo = FALSE, fig.width=10, fig.height=12, warning = FALSE, message= FALSE}
+p <- ggplot(long_data, aes(x = variable, y = log(value))) + geom_violin() +
+stat_summary(geom = 'point', fun = median) + geom_jitter(alpha=0.01) +
+ labs(title = "A) Sample wise Read counts", x = "Sample", y = expression('Log'[2]~'read counts')) +
+#p + labs(title = "New plot title", subtitle = "A subtitle", tag = "A") + labs(title = NULL)
+labs(caption = "(based on count data without filtering transcripts or samples)") +
+theme( axis.line = element_line(colour = "darkblue",  size = 1, linetype = 1), axis.text.x = element_text(angle = 90)) +
+#scale_x_discrete(labels=se$sample_id) +
+theme(axis.text.x = element_text(angle = 90)) 
+p
+ggsave(p, filename = "Results/Samplewise_gene_counts.png", width = 10, height = 8, dpi = 300)
+# geom_jitter(shape=16, position=position_jitter(0.2))
+#png("/Users/cob-aaf/Documents/Projects/PP_4730/NPD_updated/reports/Figures/violin_rawcounts.png", width = 3024, height = 2000, res = 300)
+```
+![](Results/Samplewise_gene_counts.png)
+
+
+
+```{r , eval = FALSE, echo = FALSE, fig.width=12, fig.height=15, warning = FALSE, message= FALSE}
+g <- ggplot(long_data, aes(y=countsums5, x= variable)) +
+#g <- ggplot(long_data, aes(y=countsums5, x= variable)) +
+# Number of cars in each class:
+geom_bar(stat="identity") + 
+  labs(title = "B) Number of expressed gene ncount > 10", x = "Sample", y = expression('Number of genes')) +
+#p + labs(title = "New plot title", subtitle = "A subtitle", tag = "A") + labs(title = NULL)
+labs(caption = "(based on count data without filtering transcripts or samples)") +
+  theme(axis.text.x = element_text(angle = 90)) 
+
+ggsave(g, filename = "Results/Nogenes_exrssd_5reads.png", width = 10, height = 8, dpi = 300)
+
+```
+
+![](Results/Nogenes_exrssd_5reads.png)
+
+
+
+## Filter lowly expressed genes
+
+```{r, eval=FALSE, include=FALSE}
+rna_data_f <- rna_data[which(rowSums(assays(rna_data)$counts > 5 ) > dim(rna_data)[2]/2 ), ]
+```
+
+The gene level data has `r dim(rna_data_fil)[1]` genes/observations after filtering and the transcript data has `r dim(rna_data_fil)[1]` transcripts/observations.
+
+```{r, eval=FALSE, echo=FALSE}
+datal <- melt(assays(rna_data_f)$counts) 
+datal <- left_join(datal, as.data.frame(colData(rna_data_f)), by=c("Var2"="ID1"))
+dalal <- datal %>% arrange(Year_biospy)
+  pf <- ggplot(datal, aes(x = Var2, y = log2(value), colour=factor(Day))) + geom_violin() +
+stat_summary(geom = 'point', fun = median) + geom_jitter(alpha=0.01) +
+ labs(title = "A) Sample wise Read counts", x = "Sample", y = expression('Log'[2]~'read counts')) +
+#p + labs(title = "New plot title", subtitle = "A subtitle", tag = "A") + labs(title = NULL)
+labs(caption = "(based on count data without filtering transcripts or samples)") +
+theme( axis.line = element_line(colour = "darkblue",  size = 1, linetype = 1), axis.text.x = element_text(angle = 90)) +
+#scale_x_discrete(labels=se$sample_id) +
+theme(axis.text.x = element_text(angle = 90)) 
+pf
+ggsave(pf, filename = "Results/Samplewise_gene_counts_filtered_Day.png", width = 10, height = 8, dpi = 300)
+```
+## Extraction day
+
+![Read count distribution colored by day of sample prep](Results/Samplewise_gene_counts_filtered_Day.png)
+
+![Read count distribution colored sample year](Results/Samplewise_gene_counts_filtered_year.png)
+
+## Mean vs. variance plot
+
+```{r, echo=FALSE}
+## DESeq object
+dds <- DESeqDataSetFromMatrix(round(assays(rna_data_f)$counts), colData = colData(rna_data_f), design = ~1)
+keep <- rowSums(counts(dds)) > 1
+dds <- dds[keep,]
+nrow(dds)
+# at least 3 samples with a count of 10 or higher
+keep <- rowSums(counts(dds) >= 10) >= 3
+```
+
+```{r}
+lambda <- 10^seq(from = -1, to = 2, length = 1000)
+cts <- matrix(rpois(1000*100, lambda), ncol = 100)
+library("vsn")
+meanSdPlot(cts, ranks = FALSE)
+```
+
+```{r}
+log.cts.one <- log2(cts + 1)
+meanSdPlot(log.cts.one, ranks = FALSE)
+```
+
+```{r}
+vsd <- vst(dds, blind = FALSE)
+head(assay(vsd), 3)
+
+rld <- rlog(dds, blind = FALSE)
+head(assay(rld), 3)
+```
+
+```{r}
+library("dplyr")
+library("ggplot2")
+
+dds <- estimateSizeFactors(dds)
+# Basic barplot
+
+
+
+sf <- as.data.frame(colData(dds))
+sf <- sf %>% arrange(Day)
+sf$day <- paste0("day" , "-", sf$Day, "-", sf$Year_biospy, "-", rep(1:6, 2) )
+b<- ggplot(data = sf, aes(x=day, y=log(sizeFactor)))+
+ geom_bar(stat = "identity")
+b +coord_flip()
+ggsave(b, filename = "Results/Libreary_size.png")
+```
+
+
+```{r}
+df <- bind_rows(
+  as_data_frame(log2(counts(dds, normalized=TRUE)[, 1:2]+1)) %>%
+         mutate(transformation = "log2(x + 1)"),
+  as_data_frame(assay(vsd)[, 1:2]) %>% mutate(transformation = "vst"),
+  as_data_frame(assay(rld)[, 1:2]) %>% mutate(transformation = "rlog"))
+  
+colnames(df)[1:2] <- c("x", "y")  
+
+lvls <- c("log2(x + 1)", "vst", "rlog")
+df$transformation <- factor(df$transformation, levels=lvls)
+
+ggplot(df, aes(x = x, y = y)) + geom_hex(bins = 80) +
+  coord_fixed() + facet_grid( . ~ transformation)  
+```
+
+
+```{r}
+sampleDists <- dist(t(assay(vsd)))
+sampleDists
+```
+
+```{r}
+library("pheatmap")
+library("RColorBrewer")
+```
+
+```{r}
+sampleDistMatrix <- as.matrix( sampleDists )
+
+rownames(sampleDistMatrix) <- paste( vsd$Day, vsd$Year_biospy, sep = " - " )
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+h <- pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         col = colors,
+         main = "Sample Distance"
+        )
+ggsave(h, filename = "Results/Sample_distance.png")
+```
+
+
+```{r}
+library("PoiClaClu")
+poisd <- PoissonDistance(t(counts(dds)))
+```
+
+```{r}
+samplePoisDistMatrix <- as.matrix( poisd$dd )
+rownames(samplePoisDistMatrix) <- paste( dds$Day, dds$Year_biospy, sep=" - " )
+#colnames(samplePoisDistMatrix) <- NULL
+h <- pheatmap(samplePoisDistMatrix,
+         clustering_distance_rows = poisd$dd,
+         clustering_distance_cols = poisd$dd,
+         col = colors)
+ggsave(h, filename = "./Results/SampleDistance.png", width = 10, height = 8, dpi = 300)
+```
+
+```{r}
+dds <- DESeqDataSet(se=rna_data_f, design = ~1)
+dds <- DESeq2::estimateSizeFactors(dds)
+dds <- estimateDispersions(dds)
+plotDispEsts(dds)
+```
+
+
+
+
+### PCA analyses
+
+PCA plot shows explaind variance in the data by PCs.
+
+```{r, eval = FALSE, echo = FALSE, fig.width=10, fig.height=18, warning = FALSE, message= FALSE}
+vsndds <- vst(dds, blind=FALSE)
+
+pcaobj <- prcomp(x=t(assays(rna_data_fil)$abundance))
+
+percentVar <- pcaobj$sdev^2/sum(pcaobj$sdev^2)
+
+pcamat1 <- as.data.frame(pcaobj$x)
+
+pcamat2 <- as.data.frame(merge(pcamat1,colData(rna_data_fil),by=0))
+```
+
+```{r, eval=FALSE}
+#ggsave(g, filename = "Results/PCA_bar.png", width = 10, height = 8, dpi = 300)
+png("./Results/PCA_bar.png", units = "cm", height = 10, width = 8, res = 1500)
+barplot(percentVar[1:10]*100, ylab = "Percent varinace explained", xlab = "PC 1 to 10"  ,main = "Percent variace explained", col = "purple")
+dev.off()
+```
+
+
+[PCA_Barplot](reports/Figures/PCA_bar.png)
+
+```{r, eval = FALSE, echo = FALSE, fig.width=10, fig.height=6, warning = FALSE, message= FALSE}
+# The basic PCA plot for NPD
+pc <- ggplot(pcamat2,aes(x = PC1, y = PC2,  label = ID1 , colour=factor(Year_biospy))) +
+  
+  geom_point(size = 1) +
+  geom_text(size=2,angle = 30, nudge_y = 5, nudge_x = -4)+
+  geom_jitter(width = 1)+
+  #geom_label(label.size = 0.15, nudge_y = 1.4, label.padding = unit(0.15, "lines"))+
+  xlab(paste0("PC1: ", round(percentVar[1] * 
+        100), "% variance")) + ylab(paste0("PC2: ", round(percentVar[2] * 
+        100), "% variance")) + coord_fixed() + theme_bw(base_size = 11)+theme(legend.position = "top",
+          legend.direction = "horizontal")
+ ggsave(pc, filename = "./Results/PCA_Year_biospy.png", width = 10, height = 8, dpi = 300)
+
+```
+
+[PCA_npd](reports/Figures/PCA_npd_ind.png)
+
+```{r, eval = FALSE, echo = FALSE, fig.width=10, fig.height=6, warning = FALSE, message= FALSE}
+p1 <- ggplot(pcamat2,aes(x = PC2, y = PC3, colour=sizeFactor, label = npd )) +
+  
+  geom_point(size = 1) +
+  geom_text(size=2, nudge_y = 3, nudge_x = 2)+
+  geom_jitter(width = 1)+
+  #geom_label(label.size = 0.15, nudge_y = 1.4, label.padding = unit(0.15, "lines"))+
+  xlab(paste0("PC3: ", round(percentVar[3] * 
+        100), "% variance")) + ylab(paste0("PC2: ", round(percentVar[2] * 
+        100), "% variance")) + coord_fixed() + theme_bw(base_size = 11)+theme(legend.position = "top",
+          legend.direction = "horizontal")
+ png("reports/Figures/PCA_npd_sizeF_pc23.png", units = "cm", height = 12, width = 15, res = 1500)
+  p1
+dev.off()
+```
+
+

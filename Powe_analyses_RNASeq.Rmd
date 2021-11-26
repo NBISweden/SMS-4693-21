@@ -1,0 +1,233 @@
+---
+title: "TCGA and GTEX prostate cancer data comparisons"
+author: "Ashfaq Ali"
+date: "11/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+For the comparison we used the TCGA and the GTEX downloaded from the  [*Data*](https://www.nature.com/articles/sdata201861) 
+
+## Access prostate cancer (PC) associated data
+```{r}
+
+
+query <- TCGAbiolinks::GDCquery(
+  project = "TCGA-PC",
+  data.category = "Gene expression",
+  data.type = "Gene expression quantification",
+  platform = "Illumina HiSeq", 
+  file.type  = "normalized_results",
+  experimental.strategy = "RNA-Seq",
+  barcode = c("TCGA-14-0736-02A-01R-2005-01", "TCGA-06-0211-02A-02R-2005-01"),
+  legacy = TRUE
+)
+GDCdownload(query, method = "api", files.per.chunk = 10)
+data <- GDCprepare(query)
+```
+
+## Identify genes associated with PC 
+
+## Calculate*/access summary statistics for the PC data
+
+## Look up in the pilot data for genes and calculate variation (CV) for genes
+
+## Compare with TCGA data
+
+## Calculate sample size for different
+ - Fold changes
+ - FC, CV
+ 
+ ssizeRNA package, powsimR, RNASeqPower, PROPER, [RnaSeqSampleSize] (http://bioconductor.org/packages/RnaSeqSampleSize)
+
+```{r}
+#renv::install("bioc::RnaSeqSampleSize")
+library("RnaSeqSampleSize")
+library(tidyverse)
+library(SummarizedExperiment)
+```
+
+```{r}
+
+est_power_distribution(n=65,f=0.01,rho=2,
+      distributionObject="TCGA_PRAD",repNumber=10)
+
+```
+
+```{r}
+rna_data <- readRDS("./NBIS Data/RNA_seq_Data/salmon.merged.gene_counts.rds")
+assays(rna_data)$counts <- round(assays(rna_data)$counts) %>% as.matrix()
+#rna_trnscpt_data <- readRDS("./NBIS Data/RNA_seq_Data/salmon.merged.transcript_counts.rds")
+IDs <- read_table("./NBIS Data/RNA_seq_Data/IDs.txt", col_names = TRUE)
+sample_data <- read_table("./NBIS Data/RNA_seq_Data/coldata.txt", col_names = TRUE)
+sample_data <- left_join(sample_data, IDs, by= "ID2")
+
+sample_data <- left_join(sample_data, as.data.frame(colData(rna_data )),by = c("ID1"="names") )
+
+rownames(sample_data) <- sample_data$ID1 
+colData(rna_data) <- DataFrame(sample_data)
+rna_data_f <- rna_data[which(rowSums(assays(rna_data)$counts > 5 ) > dim(rna_data)[2]/2 ), ]
+```
+## Calculate power based on pilot data  
+
+```{r}
+set.seed(123)
+      # dataMatrix <- matrix(sample(0:3000, 1e+05, replace = TRUE), nrow = 10000, ncol = 10)
+dataMatrix <- as.matrix(assay(rna_data_f, "counts"))
+       colnames(dataMatrix) <- c(paste0("Control", 1:6), paste0("Treatment", 1:6))
+       row.names(dataMatrix) <- str_split(rownames(dataMatrix), pattern = "[.]", simplify = TRUE)[,1]
+       head(dataMatrix)
+```
+```{r}
+dataMatrix <- dataMatrix[rowMeans(dataMatrix) > 5, ]
+#Estitamete the gene read count and dispersion distribution
+
+dataMatrixDistribution <- est_count_dispersion(dataMatrix, group=c(rep(0,6),rep(1,6)))
+
+```
+
+```{r}
+est_power_distribution(n = 25,f = 0.01, rho = 2,distributionObject = dataMatrixDistribution, repNumber = 100)
+```
+
+
+```{r}
+set.seed(123)
+repNumber = 100
+start = 0
+stepsize = 10
+ends = 150
+p = cbind(ssize = seq(stepsize, ends, stepsize) , 
+          pval_01 = rep(0, ends/stepsize), 
+          pval_05 = rep(0, ends/stepsize),
+          pval_01_fc15 = rep(0, ends/stepsize),
+          pval_05_fc15 = rep(0, ends/stepsize)
+          )
+i = 0
+j = 1
+while (i < ends + 1 & j < dim(p)[1] + 1 ) {
+ i =  stepsize
+ sample_size = p[j, 1]
+p[j, 2] <-  est_power_distribution(n = sample_size, f = 0.01, 
+                                  rho = 2, 
+                                  distributionObject = dataMatrixDistribution, 
+                                  repNumber = repNumber)
+
+p[j, 3] <-  est_power_distribution(n = sample_size, f = 0.05, 
+                                  rho = 2, 
+                                  distributionObject = dataMatrixDistribution, 
+                                  repNumber = repNumber)
+
+p[j, 4] <-  est_power_distribution(n = sample_size, f = 0.01, 
+                                  rho = 1.5, 
+                                  distributionObject = dataMatrixDistribution, 
+                                  repNumber = repNumber)
+
+p[j, 5] <-  est_power_distribution(n = sample_size, f = 0.05, 
+                                  rho = 1.5, 
+                                  distributionObject = dataMatrixDistribution, 
+                                  repNumber = repNumber)
+
+        j = j + 1
+        print(paste("Calculating powers for sample size", sample_size))
+}
+
+saveRDS(p, "./Results/power_pilot.rds")
+
+
+```
+
+
+
+```{r}
+library(ggplot2)
+
+p_long <- as.data.frame(p) |> pivot_longer(!ssize, names_to = "scenario", values_to = "power")
+
+plt1 <- ggplot(data=p_long, aes(x=ssize, y=power, group=scenario)) +
+  geom_line(aes(color = scenario), size = 1)+
+  geom_point(aes(color = scenario), size = 3)+ 
+           xlab("Sample Size") + 
+           ylab("Statistical Power")+
+scale_color_discrete(name="Scenario",
+                         breaks=c("pval_01", "pval_05", "pval_01_fc15", "pval_05_fc15"),
+                         labels=c("Pval = 0.01, FC = 2", "Pval = 0.05, FC = 2", "Pval = 0.01, FC = 1.5", "Pval = 0.05, FC = 1.5"))+
+ggtitle("Sample size pilot data distributions")
+
+ggsave(plot = plt1, "Results/power_pilot_data.png", width = 20, height = 14,  units = "cm", dpi = 175 )
+```
+
+```{r}
+set.seed(1234)
+repNumber = 100
+start = 0
+stepsize = 10
+ends = 150
+pT = cbind(ssize = seq(stepsize, ends, stepsize) , 
+          pval_01 = rep(0, ends/stepsize), 
+          pval_05 = rep(0, ends/stepsize),
+          pval_01_fc15 = rep(0, ends/stepsize),
+          pval_05_fc15 = rep(0, ends/stepsize)
+          )
+i = 0
+j = 1
+while (i < ends + 1 & j < dim(p)[1] + 1 ) {
+ i =  stepsize
+ sample_size = pT[j, 1]
+pT[j, 2] <-  est_power_distribution(n = sample_size, f = 0.01, 
+                                  rho = 2, 
+                                  distributionObject = "TCGA_PRAD", 
+                                  repNumber = repNumber)
+
+pT[j, 3] <-  est_power_distribution(n = sample_size, f = 0.05, 
+                                  rho = 2, 
+                                  distributionObject = "TCGA_PRAD", 
+                                  repNumber = repNumber)
+
+pT[j, 4] <-  est_power_distribution(n = sample_size, f = 0.01, 
+                                  rho = 1.5, 
+                                  distributionObject = "TCGA_PRAD", 
+                                  repNumber = repNumber)
+
+pT[j, 5] <-  est_power_distribution(n = sample_size, f = 0.05, 
+                                  rho = 1.5, 
+                                  distributionObject = "TCGA_PRAD", 
+                                  repNumber = repNumber)
+
+        j = j + 1
+        print(paste("Calculating powers for sample size", sample_size))
+}
+
+saveRDS(pT, "./Results/power_TCGA.rds")
+
+```
+
+```{r}
+pT_long <- as.data.frame(pT) |> pivot_longer(!ssize, names_to = "scenario", values_to = "power")
+plt2 <- ggplot(data=pT_long, aes(x=ssize, y=power, group=scenario)) +
+  geom_line(aes(color = scenario), size = 1)+
+  geom_point(aes(color = scenario), size = 3)
+ggsave(plot = plt2, "Results/power_TCGA_data.png", width = 15, height = 10,  units = "cm", dpi = 175 )
+
+plt2 <- ggplot(data=pT_long, aes(x=ssize, y=power, group=scenario)) +
+  geom_line(aes(color = scenario), size = 1)+
+  geom_point(aes(color = scenario), size = 3)+ 
+           xlab("Sample Size") + 
+           ylab("Statistical Power")+
+scale_color_discrete(name="Scenario",
+                         breaks=c("pval_01", "pval_05", "pval_01_fc15", "pval_05_fc15"),
+                         labels=c("Pval = 0.01, FC = 2", "Pval = 0.05, FC = 2", "Pval = 0.01, FC = 1.5", "Pval = 0.05, FC = 1.5"))+
+  ggtitle("Sample size TCGA distributions")
+
+
+ggsave(plot = plt2, "Results/power_TCGA_data.png", width = 20, height = 14,  units = "cm", dpi = 175 )
+```
+
+
+```{r, eval=FALSE}
+sample_size <- sample_size_distribution(power=0.8,f=0.01,distributionObject=dataMatrixDistribution, repNumber=100,showMessage=TRUE)
+```
+

@@ -1,0 +1,61 @@
+---
+title: "QC_report"
+author: "Ashfaq Ali: National Bioinformatics Infrastructure Sweden at SciLifeLab"
+date: "10/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exploratory analyses
+
+
+ **Read counts per sample and genes to explore the quality of libraries**
+ 
+ - A) Raw counts violin plots for number of reads per samples
+ - B) Genes with more than 5 reads per sample
+ - C) Total raw counts per sample
+ - D) PCA 
+ - E) Sample Distance
+ 
+ 
+## Read distribution (Raw data)
+
+Violin plot indicates similar expression across samples but many genes need to be filtered due to low count values.
+
+![](./Results/Samplewise_gene_counts.png)
+
+## Number of expressed genes
+
+Most samples express similar number of genes with at least 5 reads mapped to the gene.
+
+![](./Results/Nogenes_exrssd_5reads.png)
+
+## Libraray size (reletive sequence depth)
+
+Most sample have similar library size and it does not seem to relate with the sampling year. There is however more variation on Day 1.
+
+Variation in sequencing depth can potentially introduce error to the model even if it is corrected for in the models. Consistent sample prep and equal amount of RNA maybe helpful in keeping it somewhat similar.
+
+
+![](./Results/Libreary_size.png)
+
+## Read distribution (Filtered Data (day/year))
+
+![Read count distribution colored by day of sample prep](./Results/Samplewise_gene_counts_filtered_Day.png)
+
+![Read count distribution colored sample year](./Results/Samplewise_gene_counts_filtered_year.png)
+
+## Sample Distance
+
+Sample distance estimate does not suggest relationship between the age of the samples or the day of preparation.
+There maybe however larger variation in a larger study.
+
+![Sample Distance](./Results/SampleDistance.png)
+
+## PCA colored for Day of preparation and sampling year.
+
+![PCA by day](./Results/PCA_Day.png)
+![PCA by day](./Results/PCA_Year_biospy.png)

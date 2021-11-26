@@ -1,0 +1,70 @@
+---
+title: "Feasibility for RNA-seq prostate cancer"
+author: "Ashfaq Ali"
+date: "11/19/2021"
+output: powerpoint_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Sample set PCA
+
+```{r pressure, echo=FALSE, fig.height=10, fig.width=12, fig.cap = "PCA plot showing scatter of the samples against PC1 and PC2. The coulor indicates the year in which the samples were taken."}
+knitr::include_graphics("Results/PCA_Year_biospy.png")
+```
+
+
+```{r , echo=FALSE, fig.height=10, fig.width=12, fig.cap = "PCA plot showing scatter of the samples against PC1 and PC2. The color indicates the day on whichh the samples were processed."}
+knitr::include_graphics("Results/PCA_Day.png")
+```
+
+
+## Expressed Genes
+
+```{r , echo=FALSE, fig.cap="The bar plot indicating total number of genes expressed in each of the samples with at leat 5 reads mapped to each gene.", out.width = '80%'}
+knitr::include_graphics("Results/Nogenes_exrssd_5reads.png")
+```
+
+
+```{r , echo=FALSE, fig.cap="The bar plot indicating total number of genes expressed in each of the samples with at leat 5 reads mapped to each gene.", out.width = '80%'}
+knitr::include_graphics("Results/Nogenes_exrssd_10reads.png")
+```
+
+
+
+## Violin plots
+
+```{r }
+knitr::include_graphics("Results/genes_exrssd_5reads.png")
+```
+
+
+```{r }
+knitr::include_graphics("Results/Samplewise_gene_counts_filtered_day.png")
+```
+
+
+```{r }
+knitr::include_graphics("Results/Samplewise_gene_counts_filtered_year.png")
+```
+
+## Library size
+
+```{r }
+knitr::include_graphics("Results/Libreary_size.png")
+```
+
+
+```{r}
+knitr::include_graphics("Results/SampleDistance.png")
+```
+
+```{r}
+knitr::include_graphics("Results/power_pilot_data.png")
+```
+
+```{r}
+knitr::include_graphics("Results/power_TCGA_data.png")
+```
